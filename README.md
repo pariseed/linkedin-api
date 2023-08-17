@@ -26,7 +26,7 @@ To install the linkedin_api package, use the following command:
 pip3 install git+https://github.com/tomquirk/linkedin-api.git
 ```
 
-### Quick Start
+### Example profile get
 
 > See all methods on the [documentation website](https://linkedin-api.readthedocs.io/).
 
@@ -47,6 +47,34 @@ contact_info = api.get_profile_contact_info('billy-g')
 # GET 1st degree connections of a given profile
 connections = api.get_profile_connections('1234asc12304')
 ```
+
+
+### Example job get
+
+```python
+from linkedin_api import Linkedin
+
+api = Linkedin('user', 'passwd')
+max_results = 90
+kw = "devops" 
+
+jobs = api.search_jobs(keywords=kw,location_name="Europe",limit=max_results)
+
+
+for elem in range(0, len(jobs)):
+    title = jobs[elem]["title"]
+    job_description = api.get_job(jobs[elem]["entityUrn"].split(':')[3])["description"]["text"]
+    company_id = jobs[elem]["companyDetails"]["company"].split(':')[3]
+    company_name = api.get_company(public_id=company_id)["name"]
+    location = jobs[elem]["formattedLocation"]
+
+    print(title)
+    print(job_description)
+    print(company_id)
+    print(company_name)
+    print(location)
+```
+
 
 ## Disclaimer
 
