@@ -1,30 +1,15 @@
 """
 Provides linkedin api-related code
 """
-import base64
 import json
 import logging
 import random
-import uuid
 from operator import itemgetter
 from time import sleep, time
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode, quote
 
 from linkedin_api.client import Client
-from linkedin_api.utils.helpers import (
-    append_update_post_field_to_posts_list,
-    get_id_from_urn,
-    get_list_posts_sorted_without_promoted,
-    get_update_author_name,
-    get_update_author_profile,
-    get_update_content,
-    get_update_old,
-    get_update_url,
-    parse_list_raw_posts,
-    parse_list_raw_urns,
-    generate_trackingId,
-    generate_trackingId_as_charString,
-)
+from linkedin_api.utils.helpers import get_id_from_urn
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +32,6 @@ class Linkedin(object):
     :type password: str
     """
 
-    _MAX_POST_COUNT = 100  # max seems to be 100 posts per page
     _MAX_UPDATE_COUNT = 100  # max seems to be 100
     _MAX_SEARCH_COUNT = 49  # max seems to be 49, and min seems to be 2
     _MAX_REPEATED_REQUESTS = (
@@ -98,98 +82,6 @@ class Linkedin(object):
         url = f"{self.client.API_BASE_URL if not base_request else self.client.LINKEDIN_BASE_URL}{uri}"
         return self.client.session.post(url, **kwargs)
 
-    def get_profile_posts(self, public_id=None, urn_id=None, post_count=10):
-        """
-        get_profile_posts: Get profile posts
-
-        :param public_id: LinkedIn public ID for a profile
-        :type public_id: str, optional
-        :param urn_id: LinkedIn URN ID for a profile
-        :type urn_id: str, optional
-        :param post_count: Number of posts to fetch
-        :type post_count: int, optional
-        :return: List of posts
-        :rtype: list
-        """
-        url_params = {
-            "count": min(post_count, self._MAX_POST_COUNT),
-            "start": 0,
-            "q": "memberShareFeed",
-            "moduleKey": "member-shares:phone",
-            "includeLongTermHistory": True,
-        }
-        if urn_id:
-            profile_urn = f"urn:li:fsd_profile:{urn_id}"
-        else:
-            profile = self.get_profile(public_id=public_id)
-            profile_urn = profile["profile_urn"].replace(
-                "fs_miniProfile", "fsd_profile"
-            )
-        url_params["profileUrn"] = profile_urn
-        url = f"/identity/profileUpdatesV2"
-        res = self._fetch(url, params=url_params)
-        data = res.json()
-        if data and "status" in data and data["status"] != 200:
-            self.logger.info("request failed: {}".format(data["message"]))
-            return {}
-        while data and data["metadata"]["paginationToken"] != "":
-            if len(data["elements"]) >= post_count:
-                break
-            pagination_token = data["metadata"]["paginationToken"]
-            url_params["start"] = url_params["start"] + self._MAX_POST_COUNT
-            url_params["paginationToken"] = pagination_token
-            res = self._fetch(url, params=url_params)
-            data["metadata"] = res.json()["metadata"]
-            data["elements"] = data["elements"] + res.json()["elements"]
-            data["paging"] = res.json()["paging"]
-        return data["elements"]
-
-    def get_post_comments(self, post_urn, comment_count=100):
-        """
-        get_post_comments: Get post comments
-
-        :param post_urn: Post URN
-        :type post_urn: str
-        :param comment_count: Number of comments to fetch
-        :type comment_count: int, optional
-        :return: List of post comments
-        :rtype: list
-        """
-        url_params = {
-            "count": min(comment_count, self._MAX_POST_COUNT),
-            "start": 0,
-            "q": "comments",
-            "sortOrder": "RELEVANCE",
-        }
-        url = f"/feed/comments"
-        url_params["updateId"] = "activity:" + post_urn
-        res = self._fetch(url, params=url_params)
-        data = res.json()
-        if data and "status" in data and data["status"] != 200:
-            self.logger.info("request failed: {}".format(data["status"]))
-            return {}
-        while data and data["metadata"]["paginationToken"] != "":
-            if len(data["elements"]) >= comment_count:
-                break
-            pagination_token = data["metadata"]["paginationToken"]
-            url_params["start"] = url_params["start"] + self._MAX_POST_COUNT
-            url_params["count"] = self._MAX_POST_COUNT
-            url_params["paginationToken"] = pagination_token
-            res = self._fetch(url, params=url_params)
-            if res.json() and "status" in res.json() and res.json()["status"] != 200:
-                self.logger.info("request failed: {}".format(data["status"]))
-                return {}
-            data["metadata"] = res.json()["metadata"]
-            """ When the number of comments exceed total available 
-            comments, the api starts returning an empty list of elements"""
-            if res.json()["elements"] and len(res.json()["elements"]) == 0:
-                break
-            if data["elements"] and len(res.json()["elements"]) == 0:
-                break
-            data["elements"] = data["elements"] + res.json()["elements"]
-            data["paging"] = res.json()["paging"]
-        return data["elements"]
-
     def search(self, params, limit=-1, offset=0):
         """Perform a LinkedIn search.
 
@@ -231,9 +123,8 @@ class Linkedin(object):
 
             new_elements = []
             elements = data.get("data", {}).get("elements", [])
-
-            for element in elements:
-                new_elements.extend(element.get("elements", {}))
+            for i in range(len(elements)):
+                new_elements.extend(elements[i]["elements"])
                 # not entirely sure what extendedElements generally refers to - keyword search gives back a single job?
                 # new_elements.extend(data["data"]["elements"][i]["extendedElements"])
             results.extend(new_elements)
@@ -242,7 +133,9 @@ class Linkedin(object):
             # NOTE: we could also check for the `total` returned in the response.
             # This is in data["data"]["paging"]["total"]
             if (
-                (-1 < limit <= len(results))  # if our results exceed set limit
+                (
+                    limit > -1 and len(results) >= limit
+                )  # if our results exceed set limit
                 or len(results) / count >= Linkedin._MAX_REPEATED_REQUESTS
             ) or len(new_elements) == 0:
                 break
@@ -269,8 +162,7 @@ class Linkedin(object):
         # Keywords filter
         keyword_first_name=None,
         keyword_last_name=None,
-        # `keyword_title` and `title` are the same. We kept `title` for backward compatibility. Please only use one of them.
-        keyword_title=None,
+        keyword_title=None,  # `keyword_title` and `title` are the same. We kept `title` for backward compatibility. Please only use one of them.
         keyword_company=None,
         keyword_school=None,
         network_depth=None,  # DEPRECATED - use network_depths
@@ -316,14 +208,14 @@ class Linkedin(object):
         :param connection_of: Connection of LinkedIn user, given by profile URN ID
         :type connection_of: str, optional
 
-        :return: List of profiles (minimal data only: keys ["urn_id", "distance", "public_id", "tracking_id", "jobtitle", "location", "name"])
+        :return: List of profiles (minimal data only)
         :rtype: list
         """
         filters = ["resultType->PEOPLE"]
         if connection_of:
             filters.append(f"connectionOf->{connection_of}")
         if network_depths:
-            filters.append(f'network->{"|".join(network_depths)}')
+            filters.append(f'network->{"|".join(network_depth)}')
         elif network_depth:
             filters.append(f"network->{network_depth}")
         if regions:
@@ -372,9 +264,6 @@ class Linkedin(object):
                     "distance": item.get("memberDistance", {}).get("value"),
                     "public_id": item.get("publicIdentifier"),
                     "tracking_id": get_id_from_urn(item.get("trackingUrn")),
-                    "jobtitle": item.get("headline", {}).get("text"),
-                    "location": item.get("subline", {}).get("text"),
-                    "name": item.get("title", {}).get("text"),
                 }
             )
 
@@ -426,9 +315,8 @@ class Linkedin(object):
         job_title=None,
         industries=None,
         location_name=None,
-        remote=False,
-        listed_at=24 * 60 * 60,
-        distance=None,
+        remote=True,
+        listed_at=86400,
         limit=-1,
         offset=0,
         **kwargs,
@@ -447,18 +335,11 @@ class Linkedin(object):
         :type job_title: list, optional
         :param industries: A list of industry URN IDs (str)
         :type industries: list, optional
-        :param location_name: Name of the location to search within. Example: "Kyiv City, Ukraine"
+        :param location_name: Name of the location to search within
         :type location_name: str, optional
-        :param remote: Whether to search only for remote jobs. Defaults to False.
+        :param remote: Whether to include remote jobs. Defaults to True
         :type remote: boolean, optional
-        :param listed_at: maximum number of seconds passed since job posting. 86400 will filter job postings posted in last 24 hours.
-        :type listed_at: int/str, optional. Default value is equal to 24 hours.
-        :param distance: maximum distance from location in miles
-        :type distance: int/str, optional. If not specified, None or 0, the default value of 25 miles applied.
-        :param limit: maximum number of results obtained from API queries. -1 means maximum which is defined by constants and is equal to 1000 now.
-        :type limit: int, optional, default -1
-        :param offset: indicates how many search results shall be skipped
-        :type offset: int, optional
+
         :return: List of jobs
         :rtype: list
         """
@@ -482,18 +363,9 @@ class Linkedin(object):
         if industries:
             filters.append(f'industry->{"|".join(industries)}')
         if location_name:
-            filters.append(f"locationFallback->{location_name}")
+            filters.append(f'locationFallback->{"|".join(location_name)}')
         if remote:
-            filters.append(f"workRemoteAllowed->{remote}")
-        if distance:
-            filters.append(f"distance->{distance}")
-        filters.append(f"timePostedRange->r{listed_at}")
-        # add optional kwargs to a filter
-        for name, value in kwargs.items():
-            if type(value) in (list, tuple):
-                filters.append(f'{name}->{"|".join(value)}')
-            else:
-                filters.append(f"{name}->{value}")
+            filters.append(f"commuteFeatures->f_WRA")
 
         results = []
         while True:
@@ -501,9 +373,9 @@ class Linkedin(object):
             if limit > -1 and limit - len(results) < count:
                 count = limit - len(results)
             default_params = {
-                "decorationId": "com.linkedin.voyager.deco.jserp.WebJobSearchHitLite-14",
+                "decorationId": "com.linkedin.voyager.deco.jserp.WebJobSearchHitWithSalary-14",
                 "count": count,
-                "filters": f"List({','.join(filters)})",
+                "filters": f"List({filters})",
                 "origin": "JOB_SEARCH_RESULTS_PAGE",
                 "q": "jserpFilters",
                 "start": len(results) + offset,
@@ -529,7 +401,9 @@ class Linkedin(object):
             # NOTE: we could also check for the `total` returned in the response.
             # This is in data["data"]["paging"]["total"]
             if (
-                (-1 < limit <= len(results))  # if our results exceed set limit
+                (
+                    limit > -1 and len(results) >= limit
+                )  # if our results exceed set limit
                 or len(results) / count >= Linkedin._MAX_REPEATED_REQUESTS
             ) or len(elements) == 0:
                 break
@@ -644,7 +518,6 @@ class Linkedin(object):
             profile["profile_id"] = get_id_from_urn(profile["miniProfile"]["entityUrn"])
             profile["profile_urn"] = profile["miniProfile"]["entityUrn"]
             profile["member_urn"] = profile["miniProfile"]["objectUrn"]
-            profile["public_id"] = profile["miniProfile"]["publicIdentifier"]
 
             del profile["miniProfile"]
 
@@ -711,12 +584,6 @@ class Linkedin(object):
             del item["entityUrn"]
         profile["honors"] = honors
 
-        # massage [projects] data
-        projects = data["projectView"]["elements"]
-        for item in projects:
-            del item["entityUrn"]
-        profile["projects"] = projects
-
         return profile
 
     def get_profile_connections(self, urn_id):
@@ -731,7 +598,7 @@ class Linkedin(object):
         return self.search_people(connection_of=urn_id, network_depth="F")
 
     def get_company_updates(
-        self, public_id=None, urn_id=None, max_results=None, results=None
+        self, public_id=None, urn_id=None, max_results=None, results=[]
     ):
         """Fetch company updates (news activity) for a given LinkedIn company.
 
@@ -743,10 +610,6 @@ class Linkedin(object):
         :return: List of company update objects
         :rtype: list
         """
-        
-        if results is None:
-            results = []
-        
         params = {
             "companyUniversalName": {public_id or urn_id},
             "q": "companyFeedByUniversalName",
@@ -773,14 +636,11 @@ class Linkedin(object):
         self.logger.debug(f"results grew: {len(results)}")
 
         return self.get_company_updates(
-            public_id=public_id,
-            urn_id=urn_id,
-            results=results,
-            max_results=max_results,
+            public_id=public_id, urn_id=urn_id, results=results, max_results=max_results
         )
 
     def get_profile_updates(
-        self, public_id=None, urn_id=None, max_results=None, results=None
+        self, public_id=None, urn_id=None, max_results=None, results=[]
     ):
         """Fetch profile updates (newsfeed activity) for a given LinkedIn profile.
 
@@ -792,10 +652,6 @@ class Linkedin(object):
         :return: List of profile update objects
         :rtype: list
         """
-        
-        if results is None:
-            results = []
-            
         params = {
             "profileId": {public_id or urn_id},
             "q": "memberShareFeed",
@@ -822,10 +678,7 @@ class Linkedin(object):
         self.logger.debug(f"results grew: {len(results)}")
 
         return self.get_profile_updates(
-            public_id=public_id,
-            urn_id=urn_id,
-            results=results,
-            max_results=max_results,
+            public_id=public_id, urn_id=urn_id, results=results, max_results=max_results
         )
 
     def get_current_profile_views(self):
@@ -918,9 +771,6 @@ class Linkedin(object):
 
         data = res.json()
 
-        if data["elements"] == []:
-            return {}
-
         item = data["elements"][0]
         item["id"] = get_id_from_urn(item["entityUrn"])
 
@@ -954,7 +804,7 @@ class Linkedin(object):
     def send_message(self, message_body, conversation_urn_id=None, recipients=None):
         """Send a message to a given conversation.
 
-        :param message_body: Message text to send
+        :param message_body: LinkedIn URN ID for a conversation
         :type message_body: str
         :param conversation_urn_id: LinkedIn URN ID for a conversation
         :type conversation_urn_id: str, optional
@@ -972,19 +822,15 @@ class Linkedin(object):
 
         message_event = {
             "eventCreate": {
-                "originToken": str(uuid.uuid4()),
                 "value": {
                     "com.linkedin.voyager.messaging.create.MessageCreate": {
-                        "attributedBody": {
-                            "text": message_body,
-                            "attributes": [],
-                        },
+                        "body": message_body,
                         "attachments": [],
+                        "attributedBody": {"text": message_body, "attributes": []},
+                        "mediaAttachments": [],
                     }
-                },
-                "trackingId": generate_trackingId_as_charString(),
-            },
-            "dedupeByClientGeneratedToken": False,
+                }
+            }
         }
 
         if conversation_urn_id and not recipients:
@@ -1001,9 +847,7 @@ class Linkedin(object):
                 "conversationCreate": message_event,
             }
             res = self._post(
-                f"/messaging/conversations",
-                params=params,
-                data=json.dumps(payload),
+                f"/messaging/conversations", params=params, data=json.dumps(payload)
             )
 
         return res.status_code != 201
@@ -1059,8 +903,7 @@ class Linkedin(object):
         }
 
         res = self._fetch(
-            "/relationships/invitationViews",
-            params=params,
+            f"{self.client.API_BASE_URL}/relationships/invitationViews", params=params
         )
 
         if res.status_code != 200:
@@ -1102,53 +945,6 @@ class Linkedin(object):
 
         return res.status_code == 200
 
-    def add_connection(self, profile_public_id, message="", profile_urn=None):
-        """Add a given profile id as a connection.
-
-        :param profile_public_id: public ID of a LinkedIn profile
-        :type profile_public_id: str
-        :param message: message to send along with connection request
-        :type profile_urn: str, optional
-        :param profile_urn: member URN for the given LinkedIn profile
-        :type profile_urn: str, optional
-
-        :return: Error state. True if error occurred
-        :rtype: boolean
-        """
-
-        # Validating message length (max size is 300 characters)
-        if len(message) > 300:
-            self.logger.info("Message too long. Max size is 300 characters")
-            return False
-
-        if not profile_urn:
-            profile_urn_string = self.get_profile(public_id=profile_public_id)[
-                "profile_urn"
-            ]
-            # Returns string of the form 'urn:li:fs_miniProfile:ACoAACX1hoMBvWqTY21JGe0z91mnmjmLy9Wen4w'
-            # We extract the last part of the string
-            profile_urn = profile_urn_string.split(":")[-1]
-
-        trackingId = generate_trackingId()
-        payload = {
-            "trackingId": trackingId,
-            "message": message,
-            "invitations": [],
-            "excludeInvitations": [],
-            "invitee": {
-                "com.linkedin.voyager.growth.invitation.InviteeProfile": {
-                    "profileId": profile_urn
-                }
-            },
-        }
-        res = self._post(
-            "/growth/normInvitations",
-            data=json.dumps(payload),
-            headers={"accept": "application/vnd.linkedin.normalized+json+2.1"},
-        )
-
-        return res.status_code != 201
-
     def remove_connection(self, public_profile_id):
         """Remove a given profile as a connection.
 
@@ -1170,10 +966,7 @@ class Linkedin(object):
         res = self._post(
             "/li/track",
             base_request=True,
-            headers={
-                "accept": "*/*",
-                "content-type": "text/plain;charset=UTF-8",
-            },
+            headers={"accept": "*/*", "content-type": "text/plain;charset=UTF-8"},
             data=json.dumps(payload),
         )
 
@@ -1336,120 +1129,29 @@ class Linkedin(object):
 
         return err
 
-    def _get_list_feed_posts_and_list_feed_urns(
-        self, limit=-1, offset=0, exclude_promoted_posts=True
-    ):
-        """Get a list of URNs from feed sorted by 'Recent' and a list of yet
-        unsorted posts, each one of them containing a dict per post.
+    
 
-        :param limit: Maximum length of the returned list, defaults to -1 (no limit)
-        :type limit: int, optional
-        :param offset: Index to start searching from
-        :type offset: int, optional
-        :param exclude_promoted_posts: Exclude from the output promoted posts
-        :type exclude_promoted_posts: bool, optional
 
-        :return: List of posts and list of URNs
-        :rtype: (list, list)
-        """
-        _PROMOTED_STRING = "Promoted"
-        _PROFILE_URL = f"{self.client.LINKEDIN_BASE_URL}/in/"
-
-        l_posts = []
-        l_urns = []
-
-        # If count>100 API will return HTTP 400
-        count = Linkedin._MAX_UPDATE_COUNT
-        if limit == -1:
-            limit = Linkedin._MAX_UPDATE_COUNT
-
-        # 'l_urns' equivalent to other functions 'results' variable
-        l_urns = []
-
-        while True:
-
-            # when we're close to the limit, only fetch what we need to
-            if limit > -1 and limit - len(l_urns) < count:
-                count = limit - len(l_urns)
-            params = {
-                "count": str(count),
-                "q": "chronFeed",
-                "start": len(l_urns) + offset,
-            }
-            res = self._fetch(
-                f"/feed/updatesV2",
-                params=params,
-                headers={"accept": "application/vnd.linkedin.normalized+json+2.1"},
-            )
-            """
-            Response includes two keya:
-            - ['Data']['*elements']. It includes the posts URNs always
-            properly sorted as 'Recent', including yet sponsored posts. The
-            downside is that fetching one by one the posts is slower. We will
-            save the URNs to later on build a sorted list of posts purging
-            promotions
-            - ['included']. List with all the posts attributes, but not sorted as
-            'Recent' and including promoted posts
-            """
-            l_raw_posts = res.json().get("included", {})
-            l_raw_urns = res.json().get("data", {}).get("*elements", [])
-
-            l_new_posts = parse_list_raw_posts(
-                l_raw_posts, self.client.LINKEDIN_BASE_URL
-            )
-            l_posts.extend(l_new_posts)
-
-            l_urns.extend(parse_list_raw_urns(l_raw_urns))
-
-            # break the loop if we're done searching
-            # NOTE: we could also check for the `total` returned in the response.
-            # This is in data["data"]["paging"]["total"]
-            if (
-                (limit > -1 and len(l_urns) >= limit)  # if our results exceed set limit
-                or len(l_urns) / count >= Linkedin._MAX_REPEATED_REQUESTS
-            ) or len(l_raw_urns) == 0:
-                break
-
-            self.logger.debug(f"results grew to {len(l_urns)}")
-
-        return l_posts, l_urns
-
-    def get_feed_posts(self, limit=-1, offset=0, exclude_promoted_posts=True):
-        """Get a list of URNs from feed sorted by 'Recent'
-
-        :param limit: Maximum length of the returned list, defaults to -1 (no limit)
-        :type limit: int, optional
-        :param offset: Index to start searching from
-        :type offset: int, optional
-        :param exclude_promoted_posts: Exclude from the output promoted posts
-        :type exclude_promoted_posts: bool, optional
-
-        :return: List of URNs
-        :rtype: list
-        """
-        l_posts, l_urns = self._get_list_feed_posts_and_list_feed_urns(
-            limit, offset, exclude_promoted_posts
-        )
-        return get_list_posts_sorted_without_promoted(l_urns, l_posts)
-
+ 
     def get_job(self, job_id):
         """Fetch data about a given job.
         :param job_id: LinkedIn job ID
         :type job_id: str
-
+ 
         :return: Job data
         :rtype: dict
         """
         params = {
             "decorationId": "com.linkedin.voyager.deco.jobs.web.shared.WebLightJobPosting-23",
-        }
-
+        }    
+ 
         res = self._fetch(f"/jobs/jobPostings/{job_id}", params=params)
-
+ 
         data = res.json()
-
-        if data and "status" in data and data["status"] != 200:
+ 
+        if data and "status" in data and data["status"] != 200: 
             self.logger.info("request failed: {}".format(data["message"]))
             return {}
-
-        return data
+ 
+        return data 
+    
