@@ -1,28 +1,14 @@
+# WHY THIS FORK ?
+for some reason (maybe my fault) i cannot get this lib in his upstream work for me, so i made some changes in
+order to successfully search jobs and read their descriptions, i will provide also some examples.
+
+Feel free to contribute if you find that fork useful.
+
+
+
+
 # Linkedin API for Python
 
-<h3 align="center">Sponsors</h3>
-
-<p align="center">
-    <a href="https://prospeo.io/api/linkedin-email-finder" target="_blank">
-    <img height="45px" style="margin-right:15px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/prospeo.png" alt="Prospeo">
-  </a>
-  <a href="https://lix-it.com/pages/linkedin-api?utm_campaign=influencer%20marketing&utm_source=github&utm_medium=social&utm_content=tomquirk" target="_blank">
-    <img height="45px" style="margin-right:15px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/lix.png" alt="Lix">
-  </a>
-  <a href="https://nubela.co/proxycurl/?utm_campaign=influencer%20marketing&utm_source=github&utm_medium=social&utm_term=-&utm_content=tom%20quirk" target="_blank">
-    <img  height="45px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/proxycurl.png" alt="proxycurl">
-  </a>
-  <a href="https://iscraper.io/" target="_blank">
-    <img height="45px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/iscraper.png" alt="serpsbot">
-  </a>
-  <a href="https://www.piloterr.com/?ref=tomquirk" target="_blank">
-    <img height="45px" src="https://raw.githubusercontent.com/tomquirk/linkedin-api/master/assets/logos/piloterr.png" alt="piloterr">
-  </a>
-</p>
-
-<h5 align="center"><a href="https://github.com/sponsors/tomquirk/sponsorships?sponsor=tomquirk&tier_id=96653&preview=false" target="_blank">Become a sponsor</a></h5>
-
----
 
 Programmatically send messages, get jobs, and search profiles with a regular Linkedin user account.
 
@@ -62,56 +48,9 @@ contact_info = api.get_profile_contact_info('billy-g')
 connections = api.get_profile_connections('1234asc12304')
 ```
 
-## Commercial Alternative
-
-> This is a sponsored section
-
-Scrape public LinkedIn profile data at scale with [Proxycurl APIs](https://nubela.co/proxycurl/?utm_campaign=influencer%20marketing&utm_source=github&utm_medium=social&utm_term=-&utm_content=tom%20quirk).
-
-- Scraping Public profiles are battle tested in court in HiQ VS LinkedIn case.
-- GDPR, CCPA, SOC2 compliant
-- High rate limit - 300 requests/minute
-- Fast - APIs respond in ~2s
-- Fresh data - 88% of data is scraped real-time, other 12% are not older than 29 days
-- High accuracy
-- Tons of data points returned per profile
-
-Built for developers, by developers.
-
-> End sponsored section
-
-> This is a sponsored section
-
-Extract data and find verified emails in real-time with [Prospeo LinkedIn Email Finder API](https://prospeo.io/api/linkedin-email-finder).
-
-Submit a LinkedIn profile URL to our API and get:
-
-- Profile data extracted in real-time
-- Company data of the profile
-- Verified work email of the profile
-- Exclusive data points (gender, cleaned country code, time zone...)
-- One do-it-all request
-- Stable API, tested under high load
-
-Try it with 75 profiles. [Get your FREE API key now](https://prospeo.io/api/linkedin-email-finder).
-
-> End sponsored section
-
-## Documentation
-
-For comprehensive documentation, including available methods and parameters, visit the [documentation](https://linkedin-api.readthedocs.io/).
-
-[Learn more](#how-it-works) about how it works.
-
 ## Disclaimer
 
 This library is not endorsed or supported by LinkedIn. It is an unofficial library intended for educational purposes and personal use only. By using this library, you agree to not hold the author or contributors responsible for any consequences resulting from its usage.
-
-## Contributing
-
-We welcome contributions! [Learn how to find endpoints](#to-find-endpoints)
-
-## Development Setup
 
 ### Dependencies
 
@@ -119,23 +58,6 @@ We welcome contributions! [Learn how to find endpoints](#to-find-endpoints)
 - A valid Linkedin user account (don't use your personal account, if possible)
 - `pipenv` (optional)
 
-### Development installation
-
-1. Create a `.env` config file. An example is provided in `.env.example` - you include at least all of the settings set there.
-2. Using pipenv...
-
-   ```bash
-   pipenv install --dev
-   pipenv shell
-   ```
-
-### Running tests
-
-```bash
-python -m pytest tests
-```
-
-### Troubleshooting
 
 #### I keep getting a `CHALLENGE`
 
@@ -237,8 +159,3 @@ List(v->PEOPLE)
 
 It could be possible to document (and implement a nice interface for) this query language - as we add more endpoints to this project, I'm sure it will become more clear if such a thing would be possible (and if it's worth it).
 
-### Releasing a new version
-
-1. Bump `__version__` in `__init__.py`
-1. `python3 setup.py sdist bdist_wheel`
-1. `python3 -m twine upload dist/*`
